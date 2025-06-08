@@ -1,0 +1,73 @@
+------------------- DB Backup -------------------
+
+(-U if user not postgres)
+
+--- Directory ---
+
+nohup pg_dump -h IP -p 6435 -d DATABASE -Fd -f /PATH/DB_backup -v > /tmp/DB_backup.log 2>&1 &
+
+--- .SQL ---
+
+nohup pg_dump -h IP -p 6435 -d DATABASE -f /PATH/DB_backup/DB_backup.sql -v > /tmp/DB_backup.log 2>&1 &
+
+--- Schema Only ---
+
+nohup pg_dump -h IP -p 6435 -d DATABASE -s -f /PATH/Schema_backup/Schema_backup.sql -v > /tmp/Schema_backup.log 2>&1 &
+
+--- Perticular Schema Only ---
+
+nohup pg_dump -h IP -p 6434 -d DATABASE -n Schema -s -f /PATH/Schema_backup/Schema_backup.sql -v > /tmp/Schema_backup.log 2>&1 &
+
+--- Roles Only ---
+
+nohup pg_dumpall -h IP -p 6434 -r -f /PATH/DB_roles/DB_roles_backup.sql -v > /tmp/DB_roles_backup.log 2>&1 &
+
+--- Tables Only ---
+
+nohup pg_dump -h IP -p 5432 -d DATABASE -t TABLE -f /PATH/Table_backup/Table_backup.sql -v > /tmp/Table_backup.log 2>&1 &
+
+nohup pg_dump -h IP -p 5432 -d DATABASE -U USERNAME -t "schema.\"table\"" -f /PATH/Table_backup/Table_backup.sql -v > /tmp/Table_backup.log 2>&1 &
+
+--- Bpay Backups ---
+
+export PGPASSWORD='P@ssw0rd@5432@2024'
+
+nohup pg_dump -h bpay-pr-pgflexi-cross-sell.postgres.database.azure.com -p 5432 -U psqladmin -t wallet_customer_segment_bkp -v -d cross_sell_db -f /pgbkp/table_bkp/cross_cell/cross_cell.sql > /tmp/cross_cell.log 2>&1 &
+
+------------------- DB Backup Restore -------------------
+
+for .sql use \i
+
+psql -h rds-iguat-instance-1.cj8kiocs47sl.ap-south-1.rds.amazonaws.com -p 6434 -U dbadmin -a -e -c "\i /tmp/documentcd_backup_latest_1504.sql" -d documentcd  > /tmp/documentcd_backup_restore16_041.log  2>&1 &
+
+--- pg_restore ---
+
+nohup pg_restore -h IP -j 4 -d DATABASE -p 6434 /PATH/DB_backup -v > /tmp/DB_restore.log 2>&1 &
+
+nohup pg_restore -h rds-prd-mstr-pod.cluster-cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -j 4 -d campaignmgnt -p 6434 -U psqladmin /backup/master_backup/campaignmgnt_backup -v > /tmp/camp_rest.log 2>&1 &
+
+------------------- az_copy -------------------
+
+--- upload ---
+
+nohup /home/postgres/azcopy copy /PATH/DB_backup "https://poddblogs.blob.core.windows.net/kyc_21_01_2025?sv=2023-01-03&st=2024-10-14T08%3A57%3A01Z&se=2024-10-16T08%3A57%3A00Z&sr=c&sp=racwdl&sig=r0PSkOT3f3NHW%2FK3vrETGsCPCY5ieR8%2FWwjVH4T0f1c%3D" --recursive >> /tmp/DB_upload.log  2>&1 &
+
+
+nohup /var/lib/pgsql/azcopy copy /pgbkp/mon_tables_bkp "https://paytechbackup.blob.core.windows.net/mon-dbbkp?sv=2023-01-03&st=2025-03-10T12%3A57%3A18Z&se=2025-07-11T12%3A57%3A00Z&sr=c&sp=racwdxltf&sig=5fRNefCfJWjPUe0scmJZ1Q5Cik6v5WzXhfcGHEajyMA%3D" --recursive > /tmp/mon_table_blob_upload.log 2>&1 &
+ 
+--- download ---
+
+nohup /home/postgres/azcopy_linux_amd64_10.26.0/azcopy copy "https://poddblogs.blob.core.windows.net/kyc_21_01_2025?sv=2023-01-03&st=2024-10-14T08%3A57%3A01Z&se=2024-10-16T08%3A57%3A00Z&sr=c&sp=racwdl&sig=r0PSkOT3f3NHW%2FK3vrETGsCPCY5ieR8%2FWwjVH4T0f1c%3D" --recursive "/backup/" >> /tmp/DB_download.log 2>&1 &
+
+
+nohup /var/lib/pgsql/azcopy copy "https://paytechbackup.blob.core.windows.net/edc-dbbkp?sv=2023-01-03&st=2025-03-05T03%3A49%3A15Z&se=2026-01-06T03%3A49%3A00Z&sr=c&sp=racwdxltf&sig=rI7bPopnMkLCYqec7xRvyf7SxiQKN1vU3vNQJ%2BYFc5A%3D" --recursive "/pgbkp/cms_monthly" > /tmp/copy_from_blob_1.log 2>&1 &
+
+------------------- KEYS -------------------
+
+--- POD ---
+
+?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D
+
+--- PAYTECH ---
+
+?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A23%3A32Z&se=2027-06-14T10%3A23%3A00Z&sp=rwdxftlacup&sig=Q1RaQjkVkifUIISlA5h3yIsMgQk2sEoZQmm5qVyPnQE%3D
