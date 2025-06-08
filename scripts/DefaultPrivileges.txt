@@ -1,0 +1,23 @@
+GRANT ALL ON all SEQUENCES IN schema api,audit,integration,log,master,onboarding TO uam_deployment;
+GRANT SELECT,USAGE ON all SEQUENCES IN schema api,audit,integration,log,master,onboarding TO uam_dev;
+GRANT SELECT,USAGE ON all SEQUENCES IN schema api,audit,integration,log,master,onboarding TO uam_support;
+GRANT ALL ON all SEQUENCES IN schema api,audit,integration,log,master,onboarding TO uam_integration;
+GRANT ALL ON all SEQUENCES IN schema api,audit,integration,log,master,onboarding TO uam_api;
+ 
+GRANT ALL ON all FUNCTIONS IN schema api,audit,integration,log,master,onboarding TO uam_deployment;
+GRANT ALL ON all FUNCTIONS IN schema api,audit,integration,log,master,onboarding TO uam_integration;
+GRANT ALL ON all FUNCTIONS IN schema api,audit,integration,log,master,onboarding TO uam_api;
+ 
+ 
+GRANT ALL ON all TABLES IN schema api,audit,integration,log,master,onboarding TO uam_deployment;
+GRANT SELECT ON all TABLES IN schema api,audit,integration,log,master,onboarding TO uam_dev;
+GRANT SELECT ON all TABLES IN schema api,audit,integration,log,master,onboarding TO uam_support;
+GRANT SELECT,INSERT,DELETE,TRUNCATE,UPDATE ON all TABLES IN schema api,audit,integration,log,master,onboarding TO uam_integration;
+GRANT SELECT,INSERT,DELETE,UPDATE ON all TABLES IN schema api,audit,integration,log,master,onboarding  TO uam_api;
+ 
+ 
+grant usage on schema api,audit,integration,log,master,onboarding to uam_deployment ;
+grant usage on schema api,audit,integration,log,master,onboarding to uam_dev ;
+grant usage on schema api,audit,integration,log,master,onboarding to uam_integration ;
+grant usage on schema api,audit,integration,log,master,onboarding to uam_api ;
+grant usage on schema api,audit,integration,log,master,onboarding to uam_support ;
