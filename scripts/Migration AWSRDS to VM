@@ -1,0 +1,228 @@
+------------------- Check Active Sessions -------------------
+ 
+ 
+select * from pg_stat_activity where state='active';
+ 
+ 
+------------------- Check which role has which permission -------------------
+ 
+
+select distinct grantee,privilege_type from information_schema.role_table_grants where grantee='role_name';
+ 
+ 
+------------------- Kill Sessions -------------------
+ 
+ 
+select pg_terminate_backend(pid) from pg_stat_activity where usename='user_name';
+ 
+ 
+select pg_terminate_backend(pid) from pg_stat_activity where datname='db_name';
+ 
+ 
+------------------- Object count -------------------
+ 
+ 
+SELECT
+	n.nspname as schema_name
+	,CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END as object_type
+	,count(1) as object_count
+FROM pg_catalog.pg_class c
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r','v','i','S','s')
+GROUP BY  n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END
+ORDER BY n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END;
+ 
+------------------- Table with ROW count -------------------
+ 
+ 
+DO $$
+DECLARE
+table_record RECORD;
+row_count BIGINT;
+BEGIN
+RAISE NOTICE 'Schema.TableName: RowCount';
+RAISE NOTICE '---------------------------------';
+FOR table_record IN (SELECT Schemaname, tablename FROM pg_tables
+                        WHERE schemaname not in (
+                           'pg_catalog',
+                            'information_schema',
+                            'aws_postgis',
+                            'aws_oracle_ext_keys',
+                            'aws_oracle_ext',
+                            'aws_oracle_data',
+                            'pg_toast')
+               ORDER BY 1) LOOP
+     EXECUTE format('SELECT COUNT(*) FROM %I.%I', table_record.Schemaname, table_record.tablename ) INTO row_count;
+     RAISE NOTICE '%.% :  %',table_record.Schemaname, table_record.tablename, row_count;
+   END LOOP;
+END $$;
+ 
+------------------- Main Phase -------------------
+
+Taking Backup:
+
+export PGPASSWORD=PostgresDBA2024
+
+Mandate:
+
+Backup commands:
+
+nohup pg_dump -h rds-prd-mandt-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d mandate -Fd -j 12 -v -f /backup/mandate_bkp/mandate_backup_070525 > /tmp/mandate_backup_070525.log 2>&1 &
+
+nohup pg_dump -h rds-prd-mandt-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d mandate -s -f /backup/mandate_bkp/mandate_schema_070525.sql -v > /tmp/mandate_schema_070525_log.log 2>&1 &
+
+--------
+
+Blob Upload:
+
+nohup azcopy copy /backup/mandate_bkp/mandate_backup_070525 "https://poddblogs.blob.core.windows.net/mandatedbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/mandate_backup_upload.log 2>&1 &
+
+nohup azcopy copy /backup/mandate_bkp/mandate_schema_070525.sql "https://poddblogs.blob.core.windows.net/mandatedbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/mandate_schema_upload.log 2>&1 &
+
+--------
+
+Blob Download:
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/mandatedbbkp/mandate_backup_070525?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/mandate_bkp" > /tmp/mandate_backup_download.log 2>&1 &
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/mandatedbbkp/mandate_schema_070525.sql?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/mandate_bkp" > /tmp/mandate_schema_downalod.log 2>&1 &
+
+--------
+
+Restore:
+
+nohup pg_restore -v -j 12 -Fd -h 10.51.136.8 -d mandate -U postgres -p 6434 /data/mandate_bkp/mandate_backup_070525  > /tmp/mandate_backup_070525_restore.log 2>&1 &
+
+----------------------------------------------
+
+KYC: 
+
+nohup pg_dump -h rds-prd-kyc-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d kyc -Fd -j 8 -v -f /backup/kyc_bkp/kyc_backup_070525 > /tmp/kyc_backup_070525.log 2>&1 &
+
+nohup pg_dump -h rds-prd-kyc-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d kyc -s -f /backup/kyc_bkp/kyc_schema_070525.sql -v > /tmp/kyc_schema_070525.log 2>&1 &
+
+--------
+
+Blob Upload:
+
+nohup azcopy copy /backup/kyc_bkp/kyc_backup_070525 "https://poddblogs.blob.core.windows.net/kycdbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/kyc_backup_upload.log 2>&1 &
+
+nohup azcopy copy /backup/kyc_bkp/kyc_schema_070525.sql "https://poddblogs.blob.core.windows.net/kycdbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/kyc_schema_upload.log 2>&1 &
+
+--------
+
+Blob Download:
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/kycdbbkp/kyc_backup_070525?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/pgdata/kyc_bkp" > /tmp/kyc_backup_download.log 2>&1 &
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/kycdbbkp/kyc_schema_070525.sql?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/pgdata/kyc_bkp" > /tmp/kyc_schema_download.log 2>&1 &
+
+--------
+
+Restore:
+
+nohup pg_restore -v -j 12 -Fd -h 10.51.136.9 -d kyc -U postgres -p 6434 /pgdata/kyc_bkp/kyc_backup_070525  > /tmp/kyc_backup_070525_restore.log 2>&1 &
+
+----------------------------------------------
+
+Agggregator: 
+
+nohup pg_dump -h rds-prd-aggtr-pod.cluster-cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d aggregator -Fd -j 12 -v -f /backup/aggregator_bkp/aggregator_backup_070525 > /tmp/aggregator_backup_070525.log 2>&1 &
+
+nohup pg_dump -h rds-prd-aggtr-pod.cluster-cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d aggregator -s -f /backup/aggregator_bkp/aggregator_schema_070525.sql -v > /tmp/aggregator_schema_070525_log.log 2>&1 &
+
+--------
+
+Blob Upload:
+
+nohup azcopy copy /backup/aggregator_bkp/aggregator_backup_070525 "https://poddblogs.blob.core.windows.net/aggregator?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/aggregator_backup_upload.log 2>&1 &
+
+nohup azcopy copy /backup/aggregator_bkp/aggregator_schema_070525.sql "https://poddblogs.blob.core.windows.net/aggregator?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/aggregator_schema_upload.log 2>&1 &
+
+--------
+
+Blob Download:
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/aggregator/aggregator_backup_070525?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/aggregator_bkp" > /tmp/aggregator_backup_download.log 2>&1 &
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/aggregator/aggregator_schema_070525.sql?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/aggregator_bkp" > /tmp/aggregator_schema_download.log 2>&1 &
+
+--------
+
+Restore:
+
+nohup pg_restore -v -j 4 -Fd -h 10.51.136.7 -d aggregator -U postgres -p 6434 /data/aggregator_bkp/aggregator_backup_070525  > /tmp/aggregator_backup_070525_restore.log 2>&1 &
+
+----------------------------------------------
+
+Documnet: 419GB
+
+nohup pg_dump -h rds-prd-non-cd-pod.cluster-cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d document -Fd -j 12 -v -f /backup/documentnoncd_bkp/document_backup_070525 > /tmp/document_backup_070525.log 2>&1 &
+
+nohup pg_dump -h rds-prd-non-cd-pod.cluster-cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -U psqladmin -p 6434 -d document -s -f /backup/documentnoncd_bkp/document_schema_070525.sql -v > /tmp/document_schema_070525_log.log 2>&1 &
+
+--------
+
+Blob Upload:
+
+nohup azcopy copy /backup/documentnoncd_bkp/document_backup_070525 "https://poddblogs.blob.core.windows.net/documentdbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/document_backup_upload.log 2>&1 &
+
+nohup azcopy copy /backup/documentnoncd_bkp/document_schema_070525.sql "https://poddblogs.blob.core.windows.net/documentdbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/document_backup_upload.log 2>&1 &
+
+
+--------
+
+Blob Download:
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/documentdbbkp/document_backup_070525?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/documentnoncd_bkp" > /tmp/document_backup_download.log 2>&1 &
+
+nohup /home/postgres/azcopy copy "https://poddblogs.blob.core.windows.net/documentdbbkp/document_schema_070525.sql?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/data/documentnoncd_bkp" > /tmp/document_schema_download.log 2>&1 &
+
+--------
+
+Restore:
+
+nohup pg_restore -v -j 12 -Fd -h 10.51.136.10 -d document -U postgres -p 6434 /data/documentnoncd_bkp/document_backup_070525  > /tmp/document_backup_070525_restore.log 2>&1 &
+ 
+------------------------ Role and user Mapping ---------------
+ 
+ 
+Map Users and Roles by taking out GRANT commands from Backup.
+ 
+ 
+Cross-verify with following :
+ 
+ 
+SELECT
+    u.usename AS "User",
+    STRING_AGG(r.rolname, ', ') AS "Roles"
+FROM
+    pg_user u
+JOIN
+    pg_auth_members m ON (u.usesysid = m.member)
+JOIN
+    pg_roles r ON (m.roleid = r.oid)
+GROUP BY
+    u.usename;
+ 
+------------------------------------------------------
