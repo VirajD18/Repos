@@ -1,0 +1,326 @@
+1) pgbackrest installation :
+
+[root@bflprspautodb01 yum.repos.d]# yum install pgbackrest --nobest
+Updating Subscription Management repositories.
+Last metadata expiration check: 0:07:19 ago on Thu 10 Apr 2025 10:50:05 AM IST.
+Dependencies resolved.
+
+ Problem: cannot install the best candidate for the job
+  - nothing provides libssh2 needed by pgbackrest-2.54.2-1PGDG.rhel9.x86_64 from pgdg-common
+  - nothing provides libssh2.so.1()(64bit) needed by pgbackrest-2.54.2-1PGDG.rhel9.x86_64 from pgdg-common
+=============================================================================================================================================================================================
+ Package                                     Architecture                            Version                                              Repository                                    Size
+=============================================================================================================================================================================================
+Installing:
+ pgbackrest                                  x86_64                                  2.46-1.rhel9                                         pgdg-common                                  493 k
+Skipping packages with broken dependencies:
+ pgbackrest                                  x86_64                                  2.54.2-1PGDG.rhel9                                   pgdg-common                                  541 k
+
+Transaction Summary
+=============================================================================================================================================================================================
+Install  1 Package
+Skip     1 Package
+
+Total download size: 493 k
+Installed size: 1.1 M
+Is this ok [y/N]: y
+Downloading Packages:
+pgbackrest-2.46-1.rhel9.x86_64.rpm                                                                                                                           231 kB/s | 493 kB     00:02
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Total                                                                                                                                                        231 kB/s | 493 kB     00:02
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                                                                                                                                     1/1
+  Running scriptlet: pgbackrest-2.46-1.rhel9.x86_64                                                                                                                                      1/1
+  Installing       : pgbackrest-2.46-1.rhel9.x86_64                                                                                                                                      1/1
+  Running scriptlet: pgbackrest-2.46-1.rhel9.x86_64                                                                                                                                      1/1
+  Verifying        : pgbackrest-2.46-1.rhel9.x86_64                                                                                                                                      1/1
+Installed products updated.
+
+Installed:
+  pgbackrest-2.46-1.rhel9.x86_64
+Skipped:
+  pgbackrest-2.54.2-1PGDG.rhel9.x86_64
+
+Complete!
+[root@bflprspautodb01 yum.repos.d]# 
+
+-------------------------------------------------------------------------------------------
+
+2) Configuring pgbackrest.conf
+
+[postgres@bflprspautodb01 pgdata16]$ sudo vi /etc/pgbackrest.conf
+[postgres@bflprspautodb01 pgdata16]$ cat /etc/pgbackrest.conf
+[global]
+repo1-path=/backup/sup_auto_backup
+log-path=/var/log/pgbackrest/
+#process-max=4
+#archive-header-check=n
+#page-header-check=n
+#checksum-page=n
+#archive-async=y
+#start-fast=y
+repo1-retention-archive =14
+repo1-retention-full =2
+
+[supportautomate1]
+pg1-path=/data/pgdata16
+#pg1-host=10.147.71.202
+pg1-user=postgres
+pg1-port=6434
+pg1-database=postgres
+[postgres@bflprspautodb01 pgdata16]$
+
+-------------------------------------------------------------------------------------------
+
+3) Create backup directory
+
+[postgres@bflprspautodb01 backup]$ sudo mkdir sup_auto_backup
+[postgres@bflprspautodb01 backup]$ sudo chmod 775 -R sup_auto_backup/
+[postgres@bflprspautodb01 backup]$ sudo chown -R postgres:postgres sup_auto_backup/
+[postgres@bflprspautodb01 backup]$
+[postgres@bflprspautodb01 backup]$ ll
+total 20
+drwx------ 2 postgres postgres 16384 Oct 18 17:38 lost+found
+drwxrwxr-x 2 postgres postgres  4096 Apr 10 11:46 sup_auto_backup
+[postgres@bflprspautodb01 backup]$ cd sup_auto_backup/
+[postgres@bflprspautodb01 sup_auto_backup]$ pwd
+/backup/sup_auto_backup
+
+-------------------------------------------------------------------------------------------
+
+4) Configured archive mode, archive command and wal parameters.
+
+[postgres@bflprspautodb01 pgdata16]$ vi postgresql.conf
+[postgres@bflprspautodb01 pgdata16]$ cat postgresql.conf | grep 'wal'
+wal_level = replica                     # minimal, replica, or logical
+max_wal_size = 1GB
+min_wal_size = 80MB
+wal_keep_size = 4000            # in megabytes; 0 disables
+[postgres@bflprspautodb01 pgdata16]$
+[postgres@bflprspautodb01 pgdata16]$ cat postgresql.conf | grep archive
+archive_mode = on               # enables archiving; off, on, or always
+#archive_library = ''           # library to use to archive a WAL file
+                                # (empty string indicates archive_command should
+archive_command = 'pgbackrest --stanza=supportautomate1 archive-push %p'                # command to use to archive a WAL file
+                                # placeholders: %p = path of file to archive
+                                # e.g. 'test ! -f /mnt/server/archivedir/%f && cp %p /mnt/server/archivedir/%f'
+#archive_timeout = 0            # force a WAL file switch after this
+#restore_command = ''           # command to use to restore an archived WAL file
+                                # e.g. 'cp /mnt/server/archivedir/%f %p'
+#archive_cleanup_command = ''   # command to execute at every restartpoint
+#max_standby_archive_delay = 30s        # max delay before canceling queries
+                                        # when reading WAL from archive;
+
+-------------------------------------------------------------------------------------------
+
+5) Creating stanza
+
+[postgres@bflprspautodb01 ~]$ pgbackrest --stanza=supportautomate1 --log-level-console=info stanza-create
+2025-04-10 16:40:48.995 P00   INFO: stanza-create command begin 2.46: --exec-id=2520424-772980ae --log-level-console=info --log-path=/var/log/pgbackrest/ --pg1-database=postgres --pg1-path=/data/pgdata16 --pg1-port=6434 --pg1-user=postgres --repo1-path=/backup/sup_auto_backup --stanza=supportautomate1
+2025-04-10 16:40:49.610 P00   INFO: stanza-create for stanza 'supportautomate1' on repo1
+2025-04-10 16:40:49.636 P00   INFO: stanza-create command end: completed successfully (644ms)
+
+[postgres@bflprspautodb01 pgdata16]$ pgbackrest --stanza=supportautomate1 --log-level-console=info check
+2025-04-10 16:49:16.673 P00   INFO: check command begin 2.46: --exec-id=2521043-edc369d6 --log-level-console=info --log-path=/var/log/pgbackrest/ --pg1-database=postgres --pg1-path=/data/pgdata16 --pg1-port=6434 --pg1-user=postgres --repo1-path=/backup/sup_auto_backup --stanza=supportautomate1
+2025-04-10 16:49:17.289 P00   INFO: check repo1 configuration (primary)
+2025-04-10 16:49:17.491 P00   INFO: check repo1 archive for WAL (primary)
+2025-04-10 16:49:17.592 P00   INFO: WAL segment 000000010000000000000055 successfully archived to '/backup/sup_auto_backup/archive/supportautomate1/16-1/0000000100000000/000000010000000000000055-d6b79c1ce9909c4f3e41790a66373e94c446d237.gz' on repo1
+2025-04-10 16:49:17.592 P00   INFO: check command end: completed successfully (922ms)
+
+-------------------------------------------------------------------------------------------
+
+6) Take restart
+
+[postgres@bflprspautodb01 pgdata16]$ pg_ctl status
+pg_ctl: server is running (PID: 3899)
+/usr/pgsql-16/bin/postgres
+[postgres@bflprspautodb01 pgdata16]$ pg_ctl restart
+waiting for server to shut down.... done
+server stopped
+waiting for server to start....2025-04-10 16:26:24 IST [2519687]: user=,db=,app=,client=LOG:  pgaudit extension initialized
+2025-04-10 16:26:24 IST [2519687]: user=,db=,app=,client=LOG:  redirecting log output to logging collector process
+2025-04-10 16:26:24 IST [2519687]: user=,db=,app=,client=HINT:  Future log output will appear in directory "log".
+ done
+server started
+[postgres@bflprspautodb01 pgdata16]$
+[postgres@bflprspautodb01 pgdata16]$ psql
+psql (16.8)
+Type "help" for help.
+
+postgres=# show archive_mode ;
+ archive_mode
+--------------
+ on
+(1 row)
+
+postgres=# show archive_command ;
+                   archive_command
+-----------------------------------------------------
+ pgbackrest --stanza=supportautomate1 archive-push %p
+(1 row)
+
+-------------------------------------------------------------------------------------------
+
+7) Setting up repmgr
+
+postgres=# create extension repmgr ;
+CREATE EXTENSION
+postgres=# \q
+[postgres@bflprspautodb01 pgdata16]$ repmgr primary register  ---- same for standby (repmgr standby register)
+INFO: connecting to primary database...
+INFO: "repmgr" extension is already installed
+NOTICE: primary node record (ID: 1) registered
+[postgres@bflprspautodb01 pgdata16]$
+[postgres@bflprspautodb01 pgdata16]$ repmgr cluster show
+ ID | Name        | Role    | Status    | Upstream | Location | Priority | Timeline | Connection string
+----+-------------+---------+-----------+----------+----------+----------+----------+------------------------------------------------------------------------------
+ 1  | node1       | primary | * running |          | default  | 100      | 1        | host=10.147.71.202 user=postgres dbname=postgres port=6434 connect_timeout=2
+ 2  | walreceiver | standby |   running | node1    | default  | 100      | 1        | host=10.149.71.218 user=postgres dbname=postgres connect_timeout=2 port=6434
+ 
+[postgres@bflprspautodb01 pgdata16]$ repmgr cluster crosscheck ---- not worked because port was not enabled
+INFO: connecting to database
+ Name        | ID | 1 | 2
+-------------+----+---+---
+ node1       | 1  | * | *
+ walreceiver | 2  | ? | ?
+WARNING: following problems detected:
+  node 2 inaccessible via SSH
+[postgres@bflprspautodb01 pgdata16]$ psql
+psql (16.8)
+Type "help" for help.
+
+postgres=# \x
+Expanded display is on.
+postgres=# select * from pg_stat_replication;
+-[ RECORD 1 ]----+---------------------------------
+pid              | 2519724
+usesysid         | 10
+usename          | postgres
+application_name | walreceiver
+client_addr      | 10.149.71.218
+client_hostname  |
+client_port      | 40690
+backend_start    | 2025-04-10 16:26:29.385667+05:30
+backend_xmin     |
+state            | streaming
+sent_lsn         | 0/5083E480
+write_lsn        | 0/5083E480
+flush_lsn        | 0/5083E480
+replay_lsn       | 0/5083E480
+write_lag        |
+flush_lag        |
+replay_lag       |
+sync_priority    | 0
+sync_state       | async
+reply_time       | 2025-04-10 16:32:25.303883+05:30
+
+postgres=# \q
+
+-------------------------------------------------------------------------------------------
+
+8) Configuration for repmgr.conf on prod side
+
+node_id=1
+node_name=node1
+conninfo='host=10.147.71.202 user=postgres dbname=postgres port=6434 connect_timeout=2'
+data_directory='/data/pgdata16'
+pg_bindir='/usr/pgsql-16/bin'
+use_replication_slots=yes
+monitoring_history=yes
+promote_check_timeout = 15
+#failover=automatic
+promote_command='/usr/pgsql-16/bin/repmgr standby promote -f /etc/repmgr/16/repmgr.conf --log-to-file'
+follow_command='/usr/pgsql-16/bin/repmgr standby follow -f /etc/repmgr/16/repmgr.conf --log-to-file --upstream-node-id=%n'
+log_file='/var/log/repmgr/repmgrd.log'
+
+-------------------------------------------------------------------------------------------
+
+9) Taking Full backup
+
+[postgres@bflprspautodb01 pgdata16]$ pgbackrest --stanza=supportautomate1 --log-level-console=info backup
+2025-04-10 17:27:27.255 P00   INFO: backup command begin 2.46: --exec-id=2522902-9de66a98 --log-level-console=info --log-path=/var/log/pgbackrest/ --pg1-database=postgres --pg1-path=/data/pgdata16 --pg1-port=6434 --pg1-user=postgres --repo1-path=/backup/sup_auto_backup --repo1-retention-archive=14 --repo1-retention-full=2 --stanza=supportautomate1 --type=full
+WARN: no prior backup exists, incr backup has been changed to full
+2025-04-10 17:27:27.971 P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes
+2025-04-10 17:27:28.573 P00   INFO: backup start archive = 00000001000000000000005B, lsn = 0/5B000028
+2025-04-10 17:27:28.573 P00   INFO: check archive for prior segment 00000001000000000000005A
+2025-04-10 17:27:58.292 P00   INFO: execute non-exclusive backup stop and wait for all WAL segments to archive
+2025-04-10 17:27:58.493 P00   INFO: backup stop archive = 00000001000000000000005B, lsn = 0/5B000138
+2025-04-10 17:27:58.498 P00   INFO: check archive for segment(s) 00000001000000000000005B:00000001000000000000005B
+2025-04-10 17:27:58.515 P00   INFO: new backup label = 20250410-172727F
+2025-04-10 17:27:58.565 P00   INFO: full backup size = 609.3MB, file total = 1498
+2025-04-10 17:27:58.565 P00   INFO: backup command end: completed successfully (31312ms)
+2025-04-10 17:27:58.565 P00   INFO: expire command begin 2.46: --exec-id=2522902-9de66a98 --log-level-console=info --log-path=/var/log/pgbackrest/ --repo1-path=/backup/sup_auto_backup --repo1-retention-archive=14 --repo1-retention-full=2 --stanza=supportautomate1
+2025-04-10 17:27:58.584 P00   INFO: expire command end: completed successfully (19ms)
+[postgres@bflprspautodb01 pgdata16]$
+
+-------------------------------------------------------------------------------------------
+
+10) Taking Incr backup
+
+[postgres@bflprspautodb01 ~]$ pgbackrest --stanza=supportautomate1 --log-level-console=info backup --type=incr
+2025-04-10 17:02:18.019 P00   INFO: backup command begin 2.46: --exec-id=2521452-0f2bf064 --log-level-console=info --log-path=/var/log/pgbackrest/ --pg1-database=postgres --pg1-path=/data/pgdata16 --pg1-port=6434 --pg1-user=postgres --repo1-path=/backup/sup_auto_backup --repo1-retention-archive=14 --repo1-retention-full=2 --stanza=supportautomate1 --type=incr
+2025-04-10 17:02:18.751 P00   INFO: last backup label = 20250410-164934F, version = 2.46
+2025-04-10 17:02:18.751 P00   INFO: execute non-exclusive backup start: backup begins after the next regular checkpoint completes
+2025-04-10 17:02:19.553 P00   INFO: backup start archive = 000000010000000000000059, lsn = 0/59000028
+2025-04-10 17:02:19.553 P00   INFO: check archive for prior segment 000000010000000000000058
+2025-04-10 17:02:20.554 P00   INFO: execute non-exclusive backup stop and wait for all WAL segments to archive
+2025-04-10 17:02:20.755 P00   INFO: backup stop archive = 000000010000000000000059, lsn = 0/59000100
+2025-04-10 17:02:20.759 P00   INFO: check archive for segment(s) 000000010000000000000059:000000010000000000000059
+2025-04-10 17:02:20.776 P00   INFO: new backup label = 20250410-164934F_20250410-170218I
+2025-04-10 17:02:20.830 P00   INFO: incr backup size = 462KB, file total = 1498
+2025-04-10 17:02:20.830 P00   INFO: backup command end: completed successfully (2814ms)
+2025-04-10 17:02:20.830 P00   INFO: expire command begin 2.46: --exec-id=2521452-0f2bf064 --log-level-console=info --log-path=/var/log/pgbackrest/ --repo1-path=/backup/sup_auto_backup --repo1-retention-archive=14 --repo1-retention-full=2 --stanza=supportautomate1
+2025-04-10 17:02:20.836 P00   INFO: expire command end: completed successfully (6ms)
+
+-------------------------------------------------------------------------------------------
+
+11) Setting up daily maintenance, daily incr backup and weekly full backup scripts using crontab
+
+[postgres@bflprspautodb01 bkp_logs]$ crontab -l
+00 05 * * * sh /home/postgres/supp_maintenance.sh
+
+
+#incr backup pgbackrest#
+
+00 04 * * 1-6 sh /home/postgres/incr_bkp_support.sh
+
+#full backup pgbackrest#
+
+00 04 * * 0 sh /home/postgres/full_bkp_support.sh
+
+------------------maintenance------------------
+
+[postgres@bflprspautodb01 bkp_logs]$ cat /home/postgres/supp_maintenance.sh
+#!/bin/bash
+
+psql -p 6434 -d postgres -U postgres -e -a -c '\i /home/postgres/maintenance_script/supp_vacuum.sql' > /home/postgres/maintenance_script/supp_vacuum_log.log
+
+[postgres@bflprspautodb01 ~]$ cat /home/postgres/maintenance_script/supp_vacuum.sql
+set maintenance_work_mem='2GB';
+vacuum verbose analyze;
+reindex database CONCURRENTLY postgres;
+reindex system postgres;
+\c supportautomate
+set maintenance_work_mem='2GB';
+vacuum verbose analyze;
+reindex database CONCURRENTLY supportautomate;
+reindex system supportautomate;
+
+------------------incr backup------------------
+
+[postgres@bflprspautodb01 ~]$ cat /home/postgres/incr_bkp_support.sh
+a=$(date +%F)
+
+pgbackrest --stanza=supportautomate1 --log-level-console=info --type=incr backup > /backup/bkp_logs/incr_backup_support_$a.log
+
+------------------full backup------------------
+
+[postgres@bflprspautodb01 ~]$ cat /home/postgres/full_bkp_support.sh
+a=$(date +%F)
+
+pgbackrest --stanza=supportautomate1 --log-level-console=info --type=full backup > /backup/bkp_logs/full_backup_support_$a.log
+
