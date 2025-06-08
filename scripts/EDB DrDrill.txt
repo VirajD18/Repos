@@ -1,0 +1,87 @@
+EFM Switchover Steps:-
+ 
+PR:- Recon Prod DB
+ 
+[barman@PAYTECHDBBAKSRV ~]$ ssh enterprisedb@10.188.8.7
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+Prod:-
+ 
+[barman@PAYTECHDBBAKSRV ~]$ ssh paytech@10.188.8.7
+[paytech@edbpg-prd-db03 ~]$ sudo su -
+Utilit@ri@n!3
+ 
+Utilit@ri@n!3
+Standby:-
+ 
+[barman@PAYTECHDBBAKSRV ~]$ ssh paytech@10.188.136.5
+[paytech@edbpg-prd-db03 ~]$ sudo su -
+Bajaj@123
+ 
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ 
+====================================================================================================================================================
+Step:1 Check EFM status on prod and standby from Root user:-
+ 
+which efm
+ 
+------------------------------------------systemctl status edb-efm-4.6--------------------------
+
+systemctl status edb-efm-4.6
+
+Need to start the edb-efm-4.6 :-    systemctl start edb-efm-4.6
+ 
+efm cluster-status efm
+ 
+ 
+====================================================================================================================================================
+2. Change permission for sqlmonitor user:-   (PROD) (10.188.8.7)
+ 
+alter user sqlmonitor with nologin
+ 
+====================================================================================================================================================
+3. (PROD) (10.188.8.7)
+ 
+psql:-
+ 
+select pg_switch_wal
+ 
+====================================================================================================================================================
+4.  set archive_mode to off:-   (PROD)(10.188.8.7)
+ 
+cd $PGDATA
+cat postgresql.conf | grep archive_mode
+ 
+ 
+====================================================================================================================================================
+5. check replication:-    (PROD)(10.188.8.7)
+ 
+\x
+select * from pg_stat_replication;
+ 
+====================================================================================================================================================
+6. check active connection   (PROD)(10.188.8.7)
+ 
+select * from pg_stat_activity where state='active';
+ 
+select count(*), state from pg_stat_activity group by state;
+select count(*),usename,state,client_addr,application_name from pg_stat_activity group by 2,3,4,5 order by application_name asc;
+ 
+select count(*), state from pg_stat_activity group by state; select count(*),usename,state,client_addr from pg_stat_activity group by 2,3,4;
+ 
+====================================================================================================================================================
+7. switchover:-     (Standby)(10.188.136.5)(Root user)
+ 
+which efm
+/usr/edb/efm-4.6/bin/efm
+ 
+efm cluster-status efm
+ 
+efm promote efm -switchover
+ 
+efm cluster-status efm
+ 
+8. Change permission for sqlmonitor user:-   (Standby)(10.188.136.5)
+ 
+alter user sqlmonitor with login;
+ 
+====================================================================================================================================================
