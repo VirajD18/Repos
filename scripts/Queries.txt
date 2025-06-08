@@ -1,0 +1,431 @@
+---------------------------------------- Blocking ----------------------------------------
+
+SELECT blocked_locks.pid AS blocked_pid, blocking_locks.pid AS blocking_pid, blocked_activity.application_name as application_name, blocked_activity.usename AS blocked_user, blocking_activity.usename AS blocking_user, blocked_activity.query AS blocked_statement, blocking_activity.query AS blocking_statement FROM pg_catalog.pg_locks blocked_locks
+JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+JOIN pg_catalog.pg_locks blocking_locks
+ON blocking_locks.locktype = blocked_locks.locktype
+AND blocking_locks.DATABASE IS NOT DISTINCT FROM blocked_locks.DATABASE AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+AND blocking_locks.objid IS NOT DISTINCT FROM
+blocked_locks.objid
+AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+AND blocking_locks.pid != blocked_locks.pid
+JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+WHERE NOT blocked_locks.GRANTED;
+
+SELECT COUNT(*) AS blocking_count
+FROM pg_catalog.pg_locks blocked_locks
+JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+JOIN pg_catalog.pg_locks blocking_locks
+ON blocking_locks.locktype = blocked_locks.locktype
+AND blocking_locks.DATABASE IS NOT DISTINCT FROM blocked_locks.DATABASE
+AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+AND blocking_locks.pid != blocked_locks.pid
+JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+WHERE NOT blocked_locks.GRANTED;
+---------------------------------------- Connection Count ----------------------------------------
+
+select count(*), state from pg_stat_activity group by state; select count(datid),client_addr,datname,usename,state,application_name from pg_stat_activity group by client_addr,datname,usename,state,application_name order by count(datid) desc;
+
+select count(*), state from pg_stat_activity group by state; select count(*),usename,state,client_addr from pg_stat_activity group by 2,3,4;
+
+\pset format wrapped
+
+select count(pid), query from pg_stat_activity where state='active' group by query;
+
+---------------------------------------- Replication Lag ----------------------------------------
+
+select now()-pg_last_xact_replay_timestamp() as replication_lag;
+
+---------------------------------------- Terminate Idle sessions of user ----------------------------------------
+
+select pg_terminate_backend(pid) from pg_stat_activity where state in ('idle') and usename = 'username';
+
+select pg_terminate_backend(pid) from pg_stat_activity where state in ('idle') and usename not in ('api_saleone_user',  'api_salesone_user',  'securiti',  'salesone_admin',  'postgres',  'salesone_api_dashboard',  'salesone_api_int',  'salesone_api_scheduler',  'audit_scan',  'api_salesone_mdw_user',  'dms_app',  'salesone_cicd_user',  'patchdeployment',  'sqlmonitor',  'access360',  'api_kpi_user',  'api_3in1_user',  'datalake_user',  'salesone_api_report');
+
+SELECT 
+    pg_terminate_backend(pid) 
+FROM 
+    pg_stat_activity 
+WHERE 
+    datname = 'document' 
+AND 
+    pid <> pg_backend_pid();
+	
+---------------------------------------- Top 10 / Long running Active sessions ----------------------------------------
+
+select pid,datname,usename,application_name,client_addr,now()-pg_stat_activity.query_start As duration,state,left(query,100) from pg_stat_activity where state='active' order by duration desc;
+
+SELECT
+          now() - backend_start AS runtime,
+          pid,
+          usename,
+          application_name,
+          backend_start,
+          state,
+          state_change,
+          substr(query, 1, 200) the_query
+          FROM
+          pg_stat_activity
+        WHERE
+          state <> 'idle'
+          AND now() - xact_start > interval '5 minutes'
+          and usename <> 'replication'
+        ORDER BY
+          runtime DESC;
+
+---------------------------------------- For top 10 Already executed Queries ----------------------------------------
+
+\pset format wrapped
+
+SELECT
+    query,  -- Full query text
+    round(((total_exec_time + total_plan_time) / 1000)::numeric, 2) AS total_time_seconds,
+    calls,
+    round((((total_exec_time + total_plan_time) / calls) / 1000)::numeric, 2) AS mean_seconds,
+    round((100 * ((total_exec_time + total_plan_time) /
+    sum(total_exec_time + total_plan_time) OVER ()))::numeric, 2) AS percentage_cpu
+FROM
+    pg_stat_statements
+ORDER BY
+    total_time_seconds DESC
+LIMIT 10;
+
+SELECT
+    query,  -- Full query text
+    round((total_time / 1000)::numeric, 2) AS total_time_seconds,
+    calls,
+    round(((total_time / calls) / 1000)::numeric, 2) AS mean_seconds,
+    round((100 * (total_time / sum(total_time) OVER ()))::numeric, 2) AS percentage_cpu
+FROM
+    pg_stat_statements
+ORDER BY
+    total_time_seconds DESC
+LIMIT 10;
+
+---------------------------------------- Top Tables ----------------------------------------
+
+SELECT
+    schemaname AS table_schema,
+    relname AS table_name,
+    pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+    pg_size_pretty(pg_relation_size(relid)) AS data_size,
+    pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS external_size
+FROM
+    pg_catalog.pg_statio_user_tables
+ORDER BY
+    pg_total_relation_size(relid) DESC,
+    pg_relation_size(relid) DESC
+LIMIT 20;
+
+---------------------------------------- Privileges ----------------------------------------
+
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'my_table' AND indexname = 'my_index';
+
+select distinct grantee,privilege_type from information_schema.role_table_grants where grantee='role_name';
+
+SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_name = 'your_table_name';
+
+---------------------------------------- pg_stat_statements_reset ----------------------------------------
+
+
+select pg_stat_statements_reset() ;
+
+\dv+ pg_stat_statements		(checking size)
+
+---------------------------------------- .pgpass format ----------------------------------------
+
+hostname:port:database:username:password
+
+---------------------------------------- Vaccum Full ----------------------------------------
+
+ALTER SYSTEM SET maintenance_work_mem = '2GB';
+SELECT pg_reload_conf();
+
+
+SET maintenance_work_mem = '2GB';
+
+VACUUM FULL VERBOSE ANALYZE;
+
+VACUUM VERBOSE ANALYZE;
+
+---------------------------------------- Table Size ----------------------------------------
+
+SELECT pg_size_pretty(pg_total_relation_size(''));
+
+\dt+ 
+
+---------------------------------------- Database Size ----------------------------------------
+
+SELECT pg_size_pretty(pg_database_size('your_database_name'));
+
+SELECT datname AS DatabaseName, 
+       pg_size_pretty(pg_database_size(datname)) AS Size
+FROM pg_database
+WHERE datname IN ('db1', 'db2', 'db3')  -- Replace with your actual database names
+ORDER BY pg_database_size(datname) DESC;
+
+---------------------------------------- Entra User Creation ----------------------------------------
+
+select * from  pgaadauth_create_principal('app@bajajfinserv.in', false, false);
+ 
+select * from  pgaadauth_create_principal('DBA@bajajfinserv.in', true, false);
+
+---------------------------------------- DataSunrise Log Delete from / for all servers ----------------------------------------
+
+monitor / mount point if its above 80% 
+execute below command
+ 
+find /opt/datasunrise_agent/logs -name "*.log" -type f -delete
+
+---------------------------------------- pgdsat report ----------------------------------------
+
+pgdsat -U postgres -h localhost -d postgres -V 14.13 -o report_master_1311.html
+
+pgdsat -U postgres -h localhost -d database -f html > report.html
+
+---------------------------------------- Invalid Index ----------------------------------------
+
+SELECT
+    idx.indexrelid::regclass AS index_name,
+    idx.indrelid::regclass AS table_name,
+    idx.indisvalid AS is_valid,
+    idx.indisready AS is_ready,
+    stat.idx_scan AS number_of_scans
+FROM pg_index AS idx
+LEFT JOIN pg_stat_user_indexes AS stat ON stat.indexrelid = idx.indexrelid
+WHERE NOT idx.indisvalid;
+
+DROP INDEX CONCURRENTLY schemaname.indexname;
+
+---------------------------------------- PgBadger Report ----------------------------------------
+
+jq -r '.properties | .message + .statement' PT1H.json >> /root/pgbadger/dam18_4_5.log
+
+pgbadger --prefix='%t-%c-u"%u"u-' /root/pgbadger/dam18_4_5.log -b "2024-11-18 10:30:00" -e "2024-11-18 11:30:00" -o /root/pgbadger/dam_18_4_5.html
+
+''Time should be in UTC for servers other than POD''
+
+-----For POD - badger from 12.6
+
+/usr/local/bin/pgbadger  -r postgres@10.59.10.4 --exclude-user 'postgres'  --exclude-user 'sqlmonitor'  -b "2024-11-19 00:00:00" -e "2024-11-19 01:00:00"  /data/pgdata15/log/postgresql-20241119.csv -o /tmp/crm123.html
+
+-----Flexi log can be download from
+
+az postgres flexible-server server-logs download --resource-group RG-PAY-PR-DataSunrise-CI --server-name bpay-pgflexi-pr-dam --name postgresql_2024_11_18_11_00_00.log
+
+log line prefix
+
+---------------------------------------- count .ready ----------------------------------------
+ 
+ ls -lrth | grep '.ready' | wc -l
+ 
+---------------------------------------- delete file older that 30 days ----------------------------------------
+ 
+ find /root/pgbadger -mtime +30 -name "*.html" -delete
+ 
+---------------------------------------- Checking Server postgres start time ----------------------------------------
+ 
+ SELECT pg_postmaster_start_time();
+ 
+---------------------------------------- User - Roles Mapping---------------------------------------- 
+ 
+ SELECT
+    u.usename AS "User",
+    STRING_AGG(r.rolname, ', ') AS "Roles"
+FROM
+    pg_user u
+JOIN
+    pg_auth_members m ON (u.usesysid = m.member)
+JOIN
+    pg_roles r ON (m.roleid = r.oid)
+GROUP BY
+    u.usename;
+	
+---------------------------------------- Auto run script ----------------------------------------	
+
+#!/bin/bash
+ 
+SQL_SCRIPT="/home/postgres/patch.sql"
+DB_USER="pgsqladmin"
+DB_PASS="postgsqladmin@2024"
+DB_NAME="dealerone"
+ 
+for i in $(seq 1 4); do
+    echo "Running iteration $i..."
+    psql -U "$DB_USER" -d "$DB_NAME" -f "$SQL_SCRIPT" -p 5432 -h dealerone-prd-db01.postgres.database.azure.com
+done
+
+---------------------------------------- Bloating/Dead tuple ----------------------------------------
+
+SELECT relname AS TableName,
+       n_live_tup AS LiveTuples,
+       n_dead_tup AS DeadTuples
+FROM pg_stat_user_tables;
+
+SELECT * FROM pg_stat_user_tables where relname='';
+
+SELECT 
+    schemaname || '.' || relname AS table_name,
+    n_live_tup AS live_rows,
+    n_dead_tup AS dead_rows,
+    round((n_dead_tup::numeric / (n_live_tup + n_dead_tup + 1)) * 100, 2) AS dead_tuple_percentage,
+    pg_size_pretty(pg_relation_size(relname::regclass)) AS table_size
+FROM 
+    pg_stat_user_tables
+ORDER BY 
+    dead_tuple_percentage DESC
+LIMIT 20;
+
+---------------------------------------- Object Count ----------------------------------------
+
+SELECT
+	n.nspname as schema_name
+	,CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END as object_type
+	,count(1) as object_count
+FROM pg_catalog.pg_class c
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r','v','i','S','s')
+GROUP BY  n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END
+ORDER BY n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END;
+
+---------------------------------------- Test-NetConnection ----------------------------------------	
+
+Test-NetConnection -Port 9090 -ComputerName 10.188.40.10 -InformationLevel Detailed
+
+---------------------------------------- wait_event ----------------------------------------
+
+select wait_event_type, wait_event, count(*) from pg_stat_activity where state='active' group by wait_event_type, wait_event order by 3 desc limit 5;
+
+---------------------------------------- schema size ----------------------------------------
+
+select schemaname,
+pg_size_pretty(sum(pg_table_size(schemaname||'.'||relname))::bigint) as s
+from pg_stat_user_tables
+group by schemaname;
+
+
+SELECT nspname AS schema_name,
+       pg_size_pretty(SUM(pg_total_relation_size(pg_class.oid))) AS total_size
+FROM pg_class
+JOIN pg_namespace ON relnamespace = pg_namespace.oid
+WHERE nspname = 'SCHEMA_NAME'
+GROUP BY schema_name;
+
+---------------------------------------- Take backup of select statement in csv ----------------------------------------
+ 
+\copy (<query>)to '/tmp/15maymms.csv' with csv;
+ 
+\copy (select * from vtsbdevicemap where device_id in ('H81003000044514', 'H81003000041707', 'H81003000056545', 'H81003000050243', 'H81003000055618', 'H81003000064081',
+'H81003000054227', 'H81003000056657', 'H81003000056916', 'H81003000062942', 'H81003000055511', 'H81003000041615', 'H81003000060152', 'H81003000061154', 'H81003000047683',
+'H81003000048958', 'H81003000055028', 'H81003000056473', 'H81003000048892', 'H81003000054207', 'H81003000057108', 'H81003000054208', 'H81003000058001', 'H81003000059433',
+'H81003000059430', 'H81003000058392') and lang_change_flag='I') to '/tmp/15maymms.csv' with csv;
+
+COPY (
+    SELECT
+        DATE_TRUNC('day', timestamp) AS day,
+        MAX(cpu_usage) AS max_cpu_usage,
+        AVG(cpu_usage) AS avg_cpu_usage
+    FROM
+        server_cpu_usage
+    WHERE
+        server_name = '10.51.8.18'
+        AND TO_CHAR(timestamp, 'YYYY-MM') = '2025-01'
+    GROUP BY
+        day
+) TO '/backup/cpu_usages/DocCD_jan.csv' WITH (FORMAT CSV, HEADER);
+
+---------------------------------------- Load db table from csv file ----------------------------------------
+
+\copy table_name FROM '/path/to/file/file.csv' WITH (FORMAT CSV, HEADER);
+
+\copy (SELECT * FROM pg_stat_statements) TO '/tmp/doc_cdstatement.csv' WITH CSV HEADER;
+
+---------------------------------------- unused index ----------------------------------------
+
+SELECT
+    t.schemaname AS SchemaName,
+    t.relname AS TableName,
+    i.relname AS IndexName,
+    pg_stat_get_all_indexes(i.oid) AS IndexUsageStatistics,
+    pg_stat_get_last_scan(i.oid) AS LastScanDate
+FROM
+    pg_stat_user_tables t
+JOIN
+    pg_index ix ON t.relid = ix.indrelid
+JOIN
+    pg_class i ON ix.indexrelid = i.oid
+WHERE
+    t.schemaname = 'public' -- Replace 'public' with your schema name if needed
+    AND t.relname = 'doccd_cpu_jan' -- Replace 'your_table_name' with the actual table name
+ORDER BY
+    (pg_stat_get_all_indexes(i.oid))[1] ASC, -- Index scans (assuming the first element of the array is scans)
+    LastScanDate NULLS FIRST;
+	
+	
+SELECT
+    schemaname,
+    relname AS table_name,
+    indexrelname AS index_name,
+    idx_scan AS index_scan_count
+FROM
+    pg_stat_user_indexes
+WHERE
+    idx_scan > 0
+ORDER BY
+    idx_scan DESC;
+	
+---------------------------------------- Size of tables ----------------------------------------
+	
+SELECT
+	table_schema,
+    table_name,
+    pg_size_pretty(pg_total_relation_size(table_name::regclass)) AS TableSize
+FROM
+    information_schema.tables
+WHERE
+    table_name in ('TABLE1','TABLE2',...)
+ORDER BY
+    pg_total_relation_size(table_name::regclass) DESC;
+	
+---------------------------------------- pgbackrest commands ----------------------------------------
+	
+pgbackrest --stanza=mandate_dr --log-level-console=info stop / start
+
+pgbackrest --stanza=mandate_dr --log-level-console=info stanza-delete
+
+pgbackrest --stanza=emi_db3 --log-level-console=info stanza-create
+
+pgbackrest --stanza=emi_db3 --log-level-console=info check
+
+backup-ssh-port=33022
