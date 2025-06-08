@@ -1,0 +1,278 @@
+******************POA for SALESONE DATA(10.156.32.22) major version upgradation 14 to 16.***********************
+
+Take one full backup before activity
+ 
+1) upscale server to the **	core.    ...........infra team	current - 8core 64GB
+
+	Current	8Core,64GB					
+	
+	shared_buffers = 16GB					
+	max_worker_processes = 8				
+	max_parallel_workers_per_gather = 4		
+	max_parallel_workers = 8				
+	max_parallel_maintenance_workers = 4	
+	effective_cache_size = 48GB				
+	wal_keep_size = 40GB					
+ 
+2)intialize data directory to postgresql-16    ------/data/pgdata16
+
+	/data/pgdata14
+	mkdir /data/pgdata16
+	chown postgres:postgres pgdata16
+	chmod 700 pgdata16
+
+	/usr/pgsql-16/bin/initdb -D /data/pgdata16/ -W
+	
+	Utilit@ri@n!4
+	
+3)change port of current prod postgresql-14 to 6435 and keep new cluster version 16 port to 6436.
+ 
+4)make the changes in shared_preload_libraries of postgresql-16 
+
+	shared_preload_libraries = 'repmgr,pg_stat_statements,credcheck,pgaudit'
+ 
+ 
+5) check credcheck, pgaudit parametrss
+
+	postgresql.auto.conf
+	
+	credcheck.password_min_length = '10'
+	credcheck.password_min_special = '2'
+	credcheck.password_min_digit = '2'
+	credcheck.password_min_upper = '2'
+	credcheck.password_min_lower = '2'
+	credcheck.password_min_repeat = '1'
+	credcheck.password_contain_username = 'on'
+	log_rotation_size = '50MB'
+	log_checkpoints = 'on'
+	log_connections = 'on'
+	log_disconnections = 'on'
+	log_lock_waits = 'on'
+	log_temp_files = '0'
+	log_autovacuum_min_duration = '0'
+	log_error_verbosity = 'default'
+	log_min_duration_statement = '200'
+	lc_messages = 'C'
+	log_destination = 'csvlog'
+	wal_keep_size = '40GB'
+	pgaudit.role = 'auditor'
+	log_line_prefix = '%t [%p]: user=%u,db=%d,app=%a,client=%h'
+	primary_conninfo = 'user=postgres connect_timeout=2 host=10.157.32.22 port=6434 application_name=node1'
+	pgaudit.log = 'role'
+	
+6) Stop the antivirus
+	
+	systemctl stop mdatp.service
+	
+	mdatp exclusion file add --path /data/pgdata16
+	mdatp exclusion file add --path /usr/pgsql-16
+
+6) stop both the cluster.
+ 
+----------------------------PERFORM UPGRADE----------------------------------------------
+
+For 8 core -j 4
+ 
+7)/usr/pgsql-16/bin/pg_upgrade -j 4 --old-datadir /data/pgdata14/ --new-datadir /data/pgdata16/ --user postgres --old-bindir  /usr/pgsql-14/bin/ --new-bindir /usr/pgsql-16/bin/ --old-port 6435 --new-port 6436 --check
+ 
+8)nohup /usr/pgsql-16/bin/pg_upgrade -j 4 -v --old-datadir /data/pgdata14/ --new-datadir /data/pgdata16/ --user postgres --old-bindir  /usr/pgsql-14/bin/ --new-bindir /usr/pgsql-16/bin/ --old-port 6435 --new-port 6436 > /tmp/pgupgradeSLAPIDATA.log &
+ 
+9)start the new cluster postgresql-16
+ 
+	 /usr/pgsql-16/bin/pg_ctl -D /data/pgdata16/ start
+
+10)run the update_extensions.sql which will be created by pg_upgrade utility.
+	 
+11) PERFORM vacuume full.
+ 
+	Set :-
+	
+	maintenance_work_mem = 2GB
+
+	SET maintenance_work_mem = '2GB';
+
+	/usr/pgsql-16/bin/vacuumdb -U postgres --all --analyze-in-stages -j 4
+	
+12)set below parameters as per old config.
+
+	i.Memory related parameters
+		
+		shared_buffers = 16GB				
+		effective_cache_size = 48GB               
+		maintenance_work_mem = 2GB
+        
+		wal_buffers = 500MB
+		work_mem = 200MB
+		min_wal_size = 1GB
+		max_wal_size = 4GB
+	
+	ii.Archive parameters with new stanza
+	
+		archive_mode = on
+		archive_command = 'pgbackrest --stanza=salesonedata1 archive-push %p'
+	
+	iii.Wal_keep_segments
+		
+		Current
+		
+			 wal_keep_size
+			---------------
+				40GB
+
+	iv.Pgaudit
+	
+	v.credcheck
+	
+	credcheck.password_min_length = '10'
+	credcheck.password_min_special = '2'
+	credcheck.password_min_digit = '2'
+	credcheck.password_min_upper = '2'
+	credcheck.password_min_lower = '2'
+	credcheck.password_min_repeat = '1'
+	credcheck.password_contain_username = 'on'
+	
+13) Setup Pg_hba file on prod 
+
+    copy from old cluster to new
+ 
+14) Set archive mode and archive_command
+ 
+15) Create new stanza for pgbackrest
+
+	pgbackrest --stanza=salesonedata2 stanza-create
+
+	pgbackrest --stanza=salesonedata2 check
+	
+	*Current*
+	
+	[salesonedata1]
+	pg1-path=/data/pgdata14
+	pg1-port=6434
+
+	*New*
+	
+	[salesonedata2]
+	pg1-path=/data/pgdata16
+	pg1-port=6434
+ 
+16) Setup DR database server
+
+	i.nohup /usr/pgsql-16/bin/pg_basebackup -v -P -D /data/pgdata16/ -h 10.156.32.22 -X stream -p 6434 -c fast -U postgres -R > /tmp/slapidatadrbuild.log &
+	
+    ii. start the server using 16 data directory
+	
+	iii. copy pg_hba.conf from old DR cluster to new cluster.
+	
+	
+17)setup REPMGR
+
+	i. copy repmgr.conf from /etc/repmgr/14/repmgr.conf to /etc/repmgr/16/repmgr.conf
+        and make the neccessary changes and reregester primary and standby.
+	
+	ii. Register both the servers
+	
+		repmgr primary register
+		
+		repmgr standby register
+		
+18)setup bash profile for primary and standby.
+
+# .bash_profile
+
+# Get the aliases and functions
+if [ -f ~/.bashrc ]; then
+        . ~/.bashrc
+fi
+PATH=$PATH:$HOME/.local/bin:$HOME/bin
+export PATH=/usr/pgsql-16/bin/:$PATH
+export PGDATA=/data/pgdata16
+export PGDATABASE=postgres
+export PGPORT=6434
+export PATH
+# User specific environment and startup programs
+umask 077
+ 
+19) after the complete the activity take full backup using pgbackrest.
+
+---------------------------------Extentions---------------------------------
+
+In postgres Database
+
+                                            List of installed extensions
+        Name        | Version |   Schema   |                              Description
+--------------------+---------+------------+------------------------------------------------------------------------
+ credcheck          | 0.2.0   | public     | credcheck - postgresql plain text credential checker
+ pg_stat_statements | 1.9     | public     | track planning and execution statistics of all SQL statements executed
+ pgaudit            | 1.6.2   | public     | provides auditing functionality
+ plpgsql            | 1.0     | pg_catalog | PL/pgSQL procedural language
+ plpython3u         | 1.0     | pg_catalog | PL/Python3U untrusted procedural language
+ postgis            | 3.3.6   | public     | PostGIS geometry and geography spatial types and functions
+ repmgr             | 5.4     | repmgr     | Replication manager for PostgreSQL
+(7 rows)
+
+In interactive_forum Database
+
+                        List of installed extensions
+    Name    | Version |   Schema   |              Description
+------------+---------+------------+----------------------------------------
+ oracle_fdw | 1.2     | public     | foreign data wrapper for Oracle access
+ pgagent    | 4.2     | pgagent    | A PostgreSQL job scheduler
+ plpgsql    | 1.0     | pg_catalog | PL/pgSQL procedural language
+(3 rows)
+
+In merchant_service Database
+                                  List of installed extensions
+    Name    | Version |   Schema   |                        Description
+------------+---------+------------+------------------------------------------------------------
+ oracle_fdw | 1.2     | public     | foreign data wrapper for Oracle access
+ pgagent    | 4.2     | pgagent    | A PostgreSQL job scheduler
+ pgcrypto   | 1.3     | public     | cryptographic functions
+ plpgsql    | 1.0     | pg_catalog | PL/pgSQL procedural language
+ postgis    | 3.3.6   | public     | PostGIS geometry and geography spatial types and functions
+(5 rows)
+
+In salesone_dp Database
+
+                                            List of installed extensions
+        Name        | Version |   Schema   |                              Description
+--------------------+---------+------------+------------------------------------------------------------------------
+ oracle_fdw         | 1.2     | public     | foreign data wrapper for Oracle access
+ pg_buffercache     | 1.3     | public     | examine the shared buffer cache
+ pg_stat_statements | 1.9     | public     | track planning and execution statistics of all SQL statements executed
+ pgagent            | 4.2     | pgagent    | A PostgreSQL job scheduler
+ pgcrypto           | 1.3     | public     | cryptographic functions
+ plpgsql            | 1.0     | pg_catalog | PL/pgSQL procedural language
+ plpython3u         | 1.0     | pg_catalog | PL/Python3U untrusted procedural language
+ postgis            | 3.3.2   | public     | PostGIS geometry and geography spatial types and functions
+(8 rows)
+
+In salesone_lms Database
+
+                                  List of installed extensions
+    Name    | Version |   Schema   |                        Description
+------------+---------+------------+------------------------------------------------------------
+ oracle_fdw | 1.2     | public     | foreign data wrapper for Oracle access
+ pgagent    | 4.2     | pgagent    | A PostgreSQL job scheduler
+ pgcrypto   | 1.3     | public     | cryptographic functions
+ plpgsql    | 1.0     | pg_catalog | PL/pgSQL procedural language
+ postgis    | 3.3.2   | public     | PostGIS geometry and geography spatial types and functions
+(5 rows)
+
+                                 List of databases
+       Name        |          Owner         |  Size   | Tablespace |                Description											
+-------------------+------------------------+---------+------------+---------------------------                          
+ interactive_forum | postgres               | 1584 MB | pg_default |
+ merchant_service  | postgres               | 23 GB   | pg_default |
+ postgres          | postgres               | 42 MB   | pg_default | default administrative connection database
+                   |                        |         |            |
+ salesone_dp       | dailyplanner_deployment| 68 GB   | pg_default |
+                   |                        |         |            |
+ salesone_lms      | dailyplanner_deployment| 20 GB   | pg_default |
+                   |                        |         |            |
+ sqlmonitor        | postgres               | 15 MB   | pg_default |
+                   |                        |         |            |
+ template0         | postgres               | 8673 kB | pg_default | unmodifiable empty database
+                   |                        |         |            |
+ template1         | postgres               | 8681 kB | pg_default | default template for new databases
+                   |                        |         |            |
+(8 rows)
