@@ -1,0 +1,43 @@
+--------------------------------PITR--------------------------------
+
+STEP 1:- MAKE NEW DATA DIRECTORY AND CHANGE PERMISSIONS
+
+	sudo mkdir DIRECTORY
+	sudo chown postgres:postgres DIRECTORY
+	sudo chmod 700 DIRECTORY
+ 
+ 
+STEP 2:- CHECK PGBACKREST INFO COMMAND AND TAKE BACKUP ID FROM AVAILABLE BACKUP
+
+	pgbackrest --stanza=STANZA --log-level-console=info info
+	
+	incr backup: 20250209-013002F_20250212-013002I   -----TAKE THIS BACKUP ID
+	timestamp start/stop: 2025-02-12 01:30:02+05:30 / 2025-02-12 01:51:03+05:30
+		wal start/stop: 0000000300003400000000D4 / 0000000300003400000000F2
+			database size: 365.0GB, database backup size: 155.0GB
+			repo1: backup set size: 111.9GB, backup size: 49.8GB
+			backup reference total: 1 full, 2 incr
+			
+			
+STEP 3:- RUN RESTORATION COMMAND FROM OTHER SERVER WHERE YOU WANT TO RESTORE..
+  
+	nohup pgbackrest restore --stanza=STANZA --set=20250209-013002F_20250212-013002I --pg1-path=/PATH/DIRECTORY --reset-pg1-host --log-level-console=debug  > /tmp/DB.log &
+	
+	--reset-pg1-host is essential when restoring to a different server. it configures the restored postgresql instance to function correctly on the new host by adjusting network settings, paths, and potentially file permissions.  if you are restoring to the same host, you generally do not need this option, although it won't cause harm if used.  it's primarily for cross-host restores
+   
+	
+	nohup pgbackrest restore --stanza=STANZA --set=20250209-013002F_20250212-013002I --pg1-path=/PATH/DIRECTORY --reset-pg1-host --type=time --target="2025-02-10 16:16:35.117932+05:30"   
+  
+STEP 4:- CHECK PORT AND UPDATE BINARY TO NEW SERVER SAME AS OLD SERVER.
+  
+  
+STEP 5:- CHECK DATABASE SERVICE STATUS AND START THE NEW DATA DIRECTORY.
+
+	/usr/pgsql-16/bin/pg_ctl start -D /PATH/DIRECTORY
+  
+  
+STEP 6:- CHECK DATABASES AND EXTENTIONS
+
+	/usr/pgsql-16/bin/psql -p 8008
+
+
