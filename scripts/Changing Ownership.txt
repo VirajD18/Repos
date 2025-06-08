@@ -1,0 +1,33 @@
+	For TABLES:
+	
+		SELECT 'ALTER TABLE '|| schemaname || '."' || tablename ||'" OWNER TO bflpg_deployment;'
+		FROM pg_tables WHERE NOT schemaname IN ('pg_catalog', 'information_schema','pgcopydb','acess360','acess360_uat','pgagent')
+		ORDER BY schemaname, tablename;
+		
+	For SEQUENCES:
+	
+		SELECT 'ALTER sequence  '|| schemaname || '."' || sequencename  ||'" OWNER TO bflpg_deployment;'
+		FROM pg_sequences WHERE NOT schemaname IN ('pg_catalog', 'information_schema','pgcopydb','acess360','acess360_uat','pgagent','repack')
+		ORDER BY schemaname, sequencename;
+		
+	For VIEWS:
+	
+		SELECT 'ALTER table  '|| schemaname || '."' || viewname  ||'" OWNER TO bflpg_deployment;'
+		FROM pg_views WHERE NOT schemaname IN ('pg_catalog', 'information_schema','pgcopydb','acess360','acess360_uat','pgagent','repack')
+		ORDER BY schemaname, viewname;
+		
+	For FUNCTIONS:
+	
+		SELECT  'ALTER FUNCTION ' || quote_ident(s.nspname) || '.' ||quote_ident(s.function_name) || '('||s.parms||') owner TO bflpg_deployment;' FROM 
+		(
+		SELECT 
+		nspname
+		,proname AS function_name
+		, pg_catalog.oidvectortypes(proargtypes) AS parms
+		FROM pg_catalog.pg_proc AS c
+		JOIN pg_namespace n
+		ON (c.pronamespace = n.oid)
+		WHERE not nspname in ('pg_catalog', 'information_schema','pgcopydb','acess360','acess360_uat','pgagent')
+		ORDER BY proname
+		)s;
+ 
