@@ -1,0 +1,203 @@
+------------------- Check Active Sessions -------------------
+ 
+ 
+select * from pg_stat_activity where state='active';
+ 
+ 
+------------------- Check which role has which permission -------------------
+ 
+
+select distinct grantee,privilege_type from information_schema.role_table_grants where grantee='mandate_deployment';
+ 
+ 
+------------------- Kill Sessions -------------------
+ 
+ 
+select pg_terminate_backend(pid) from pg_stat_activity where usename='mandate_api';
+ 
+ 
+select pg_terminate_backend(pid) from pg_stat_activity where datname='mandate';
+ 
+ 
+------------------- Object count -------------------
+ 
+ 
+SELECT
+	n.nspname as schema_name
+	,CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END as object_type
+	,count(1) as object_count
+FROM pg_catalog.pg_class c
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r','v','i','S','s')
+GROUP BY  n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END
+ORDER BY n.nspname,
+	CASE c.relkind
+	   WHEN 'r' THEN 'table'
+	   WHEN 'v' THEN 'view'
+	   WHEN 'i' THEN 'index'
+	   WHEN 'S' THEN 'sequence'
+	   WHEN 's' THEN 'special'
+	END;
+ 
+------------------- Table with ROW count -------------------
+ 
+ 
+DO $$
+DECLARE
+table_record RECORD;
+row_count BIGINT;
+BEGIN
+RAISE NOTICE 'Schema.TableName: RowCount';
+RAISE NOTICE '---------------------------------';
+FOR table_record IN (SELECT Schemaname, tablename FROM pg_tables
+                        WHERE schemaname not in (
+                           'pg_catalog',
+                            'information_schema',
+                            'aws_postgis',
+                            'aws_oracle_ext_keys',
+                            'aws_oracle_ext',
+                            'aws_oracle_data',
+                            'pg_toast')
+               ORDER BY 1) LOOP
+     EXECUTE format('SELECT COUNT(*) FROM %I.%I', table_record.Schemaname, table_record.tablename ) INTO row_count;
+     RAISE NOTICE '%.% :  %',table_record.Schemaname, table_record.tablename, row_count;
+   END LOOP;
+END $$;
+ 
+ 
+------------------- Preventing New Connections -------------------
+ 
+ 
+1. Comment-out archive_command
+ 
+2. Change port from 6434 to 6435
+ 
+ 
+------------------- Taking Roles, Schema and Database Backup -------------------
+ 
+ 
+Run with postgres user from 10.51.8.14
+ 
+ 
+pg_dumpall --roles-only -p 6435 -v -f /data/mandate_bkp/mandate_roles_080425.sql
+ 
+ 
+nohup pg_dump -U postgres -p 6435 -d mandate -Fd -j 12 -v -f /data/mandate_bkp/mandate_backup_080425 > /data/mandate_bkp/mandate_backup_080425.log 2>&1 &
+ 
+nohup pg_dump -U postgres -p 6435 -d mandate -s -f /data/mandate_bkp/mandate_schema_080425.sql -v > /data/mandate_bkp/mandate_schema_080425_log.log 2>&1 &
+ 
+------------------- Uploading Backups to Blob -------------------
+ 
+ 
+Run with postgres user from 10.51.8.14
+
+current db size -  393 GB 
+ 
+ 
+------ Roles Only Backup Upload ------
+ 
+ 
+nohup /home/postgres/azcopy copy /data/mandate_bkp/mandate_roles_080425.sql "https://poddblogs.blob.core.windows.net/mandatedbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/mandate_roles_log.log 2>&1 &
+ 
+------ Database Backup Upload ------
+ 
+ 
+nohup /home/postgres/azcopy copy /data/mandate_bkp/mandate_backup_080425 "https://poddblogs.blob.core.windows.net/mandatedbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/mandate_backup_log.log 2>&1 &
+ 
+------ Schema Only Backup Upload ------
+ 
+ 
+nohup /home/postgres/azcopy copy /data/mandate_bkp/mandate_schema_080425.sql "https://poddblogs.blob.core.windows.net/mandatedbbkp?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive > /tmp/mandate_schema_log.log 2>&1 &
+ 
+------------------- Downloading Backups on 10.86.3.253 From Blob -------------------
+ 
+ 
+/backup - 432G available
+ 
+ 
+------ Roles Only Backup Download ------
+ 
+ 
+nohup azcopy copy "https://poddblogs.blob.core.windows.net/mandatedbbkp/test.txt?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/backup/mandate_bkp/mandate_roles_080425.sql" > /tmp/mandate_roles_log.log 2>&1 &
+ 
+------ Database Backup Download ------
+ 
+ 
+nohup azcopy copy "https://poddblogs.blob.core.windows.net/mandatedbbkp/test.txt?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/backup/mandate_bkp/mandate_backup_080425" > /tmp/mandate_backup_log.log 2>&1 &
+ 
+------ Schema Only Backup Download ------
+ 
+ 
+nohup azcopy copy "https://poddblogs.blob.core.windows.net/mandatedbbkp/test.txt?sv=2023-01-03&ss=btqf&srt=sco&st=2025-03-13T10%3A25%3A54Z&se=2027-03-14T10%3A25%3A00Z&sp=rwdxftlacup&sig=mn2Q5MyPpNVQxJNAD3QIwp66jJmM4El1Af9iH2s7v08%3D" --recursive "/backup/mandate_bkp/mandate_schema_080425.sql" > /tmp/mandate_schema_log.log 2>&1 &
+ 
+------------------- AWS Database Connection From 10.86.3.253 -------------------
+ 
+ 
+Password: PostgresDBA2024
+ 
+ 
+export PGPASSWORD=PostgresDBA2024
+ 
+psql -h rds-prd-mandt-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -p 6434 -U psqladmin -d postgres
+ 
+ 
+------------------- Database Restoration On AWS -------------------
+ 
+ 
+User: psqladmin
+ 
+Password: PostgresDBA2024
+ 
+ 
+Login to AWS server
+ 
+ 
+------ Roles Restoration ------
+ 
+ 
+\i /backup/mandate_bkp/mandate_roles_080425.sql
+ 
+ 
+------ Database Restoration ------
+ 
+ 
+export PGPASSWORD=PostgresDBA2024
+ 
+ 
+nohup pg_restore -v -j 12 -Fd -h rds-prd-mandt-pod-instance-1.cfxw9wtz6bjk.ap-south-1.rds.amazonaws.com -d mandate -U psqladmin -p 6434 /backup/mandate_bkp/mandate_backup_080425  > /tmp/mandate_backup_040325_restore.log 2>&1 &
+ 
+------------------------ Role and user Mapping ---------------
+ 
+ 
+Map Users and Roles by taking out GRANT commands from Backup.
+ 
+ 
+Cross-verify with following :
+ 
+ 
+SELECT
+    u.usename AS "User",
+    STRING_AGG(r.rolname, ', ') AS "Roles"
+FROM
+    pg_user u
+JOIN
+    pg_auth_members m ON (u.usesysid = m.member)
+JOIN
+    pg_roles r ON (m.roleid = r.oid)
+GROUP BY
+    u.usename;
+ 
+------------------------------------------------------
