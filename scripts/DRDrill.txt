@@ -1,0 +1,54 @@
+Switchover Repmgr Steps:-
+
+===============================================================================================================================================================
+1. Disable archive_command in DPOD-PRD-DB01 10.51.8.17 :-
+
+[postgres@DPOD-PRD-DB01 pgdata14]$ cd $PGDATA
+[postgres@DPOD-PRD-DB01 pgdata14]$ cat postgresql.conf | grep archive_command
+[postgres@DPOD-PRD-DB01 pgdata14]$ vi postgresql.conf
+[Put (# / hash) in front of archive_command in conf]
+
+2. Reload:-
+[postgres@DPOD-PRD-DB01 pgdata14]$ psql
+postgres=# select pg_reload_conf();
+postgres=# show archive_command ;
+
+3. Change permission for sqlmonitor user DPOD-PRD-DB01 10.51.8.17 :-
+
+[postgres@DPOD-PRD-DB01 pgdata14]$ psql
+[postgres@DPOD-PRD-DB01 pgdata14]$ alter user sqlmonitor with nologin;
+
+===============================================================================================================================================================
+ssh 10.51.136.10
+
+4. Repmgr Cluster Check DPOD-DR-DB01 10.51.136.10 :-
+
+Relication check, active connection, blocking, long running
+
+[postgres@DPOD-DR-DB01 ~]$ repmgr cluster crosscheck
+[postgres@DPOD-DR-DB01 ~]$ repmgr cluster show
+[postgres@DPOD-DR-DB01 ~]$ repmgr standby switchover --dry-run
+
+===============================================================================================================================================================
+
+5. Switchover:-
+[postgres@DPOD-DR-DB01 ~]$ repmgr standby switchover
+
+===============================================================================================================================================================
+
+6. Enable archive_command in DPOD-DR-DB01 10.51.136.10:-
+
+[postgres@DPOD-DR-DB01 pgdata14]$ cd $PGDATA
+[postgres@DPOD-DR-DB01 pgdata14]$ cat postgresql.conf | grep archive_command
+[postgres@DPOD-DR-DB01 pgdata14]$ vi postgresql.conf
+
+add archive_command entry and enable it:-
+
+archive_command = 'pgbackrest --stanza=document_dr archive-push %p'
+
+7. Change permission for sqlmonitor user DPOD-DR-DB01 10.51.136.10:-
+
+[postgres@DPOD-DR-DB01 pgdata14]$ psql
+[postgres@DPOD-DR-DB01 pgdata14]$ alter user sqlmonitor with login;
+
+===============================================================================================================================================================
