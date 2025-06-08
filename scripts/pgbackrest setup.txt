@@ -1,0 +1,125 @@
+------------------- Installation -------------------
+Install pgBackRest on your PostgreSQL server. 
+
+yum install pgbackrest
+ 
+------------------- Configuration -------------------
+
+Create a configuration directory for pgBackRest and set permissions.
+
+touch /etc/pgbackrest.conf
+chown postgres:postgres /etc/pgbackrest.conf
+ 
+Create a pgBackRest configuration file (pgbackrest.conf) with the necessary settings. Below is a minimal example:
+ 
+pg1-path=/data/pgdata14
+pg1-host=postgres_server_ip (enter primary server ip if replication is configured)
+pg1-user=database_user
+pg1-port=database_port
+pg1-database=postgres
+pg1-host-user=user_name_from_which_pgbackest_will_run  (OS user)
+#pg-version-force=15 (if using postgres 15 then enable this parameter)
+repo1-type=azure (cloud_name)
+repo1-azure-account=storage_account_name
+repo1-azure-container=container_name
+repo1-azure-key=storage_account_key
+
+[global]
+log-path=/var/log/pgbackrest/
+process-max=4
+archive-header-check=n
+page-header-check=n
+checksum-page=n
+archive-async=y
+start-fast=y
+ 
+ 
+Postgres server configuration:
+ 
+On postgres instance we need to install pgbackrest package 
+touch /etc/pgbackrest.conf
+chown postgres:postgres /etc/pgbackrest.conf
+ 
+Edit pgbackrest.conf
+Note: No need to initialize stanza on postgres servers only pgbackrest package should installed (this is for archive setup)
+[postgres]
+pg1-path=/data/pgdata14
+pg1-port=6434
+[global]
+repo1-host=10.51.12.6
+repo1-host-user=postgres
+ 
+pgbackrest.conf settings(global settings):
+start-fast=y (starts backup fast, skip certain checks and initializations during the backup start process)
+repo1-retention-full=2 (full backup retention policy, pgBackRest will retain only the two most recent full backups in the repository)
+repo1-retention-diff=2 (diff backup retention policy, pgBackRest will retain only the two most recent full backups in the repository)
+repo1-retention-incr=2 (incr backup retention policy, pgBackRest will retain only the two most recent full backups in the repository)
+repo1-retention-archive=7 (incr backup retention policy, pgBackRest will retain only the seven days recent full backups in the repository)
+Note: The retention of archived WAL (Write-Ahead Log) files is typically tied to the retention policy of the backups, rather than being explicitly configured separately for incremental or differential backups.
+repo1-retention-archive-type=diff (don't set it, optional parameter for diff backup archive retention policy)
+repo1-retention-archive-type=incr (don't set it, optional parameter for incr backup archive retention policy)
+backup-standby=y (backup will be configured from standby server)
+ 
+Configure Repository Encryption:
+It is important to use a long, random passphrase for the cipher key. A good way to generate one is to run: openssl rand -base64 48.
+repo1-cipher-pass=zWaf6XtpjIVZC5444yXB+cgFDFl7MxGlgkZSaoPvTGirhPygu4jOKOXf9LO4vjfO
+repo1-cipher-type=aes-256-cbc
+ 
+Archive compress-level:
+[global:archive-push]
+compress-level=3 (we can set value 0 to 9) 0 indicating no compression and 9 indicating the highest compression level (but potentially slower compression when setting higher value)
+ 
+[postgres]
+pg1-path=/var/lib/pgsql/data
+ 
+Replace /var/lib/pgbackrest with the path where you want to store backups and /var/lib/pgsql/data with the path to your PostgreSQL data directory.
+ 
+ 
+--------------How to create and delete stanza------------------------
+pgbackrest --stanza=postgres --log-level-console=info --log-level-file=info stanza-create
+pgbackrest --stanza=postgres --log-level-console=info stanza-delete --force (force option deletes stanza without asking permission to postgres)
+ 
+ 
+---------------Check stanza information------------------
+Check stanza with archive setup is running or not:
+pgbackrest --stanza=stanza_name --log-level-console=info check
+ 
+ 
+----------------Backup-----------------------
+Perform a backup of your PostgreSQL database:
+sudo -u postgres pgbackrest --stanza=stanza_name backup (by default it will take full backup)
+pgbackrest --stanza=stanza_name backup --type=full
+ 
+To take increment backup:
+sudo -u postgres pgbackrest --stanza=stanza_name backup --type=incr
+sudo -u postgres pgbackrest --stanza=stanza_name backup --type=diff
+ 
+How to list backup:
+pgbackrest --stanza=postgres info
+ 
+How to remove backup:
+sudo -u postgres pgbackrest --stanza=mydb expire
+ 
+Restore:
+Restore a backup of your PostgreSQL database.
+sudo -u postgres pgbackrest --stanza=mydb restore --delta --set=Backup_id --pg1-path=restore_directory --log-level-console=info
+Additonal use --reset-pg1-host if error occurs: run restore command from primary server
+ 
+Restore Selected Databases:
+sudo -u postgres pgbackrest --stanza=mydb restore --delta --set=Backup_id --pg1-path=restore_directory --db-include=database_name_which_would_be_restore --log-level-console=info
+Additonal use --reset-pg1-host if error occurs: run restore command from primary server
+ 
+The delta option allows pgBackRest to automatically determine which files in the database cluster directory can be preserved and which ones need to be restored from the backup — it also removes files not present in the backup manifest so it will dispose of divergent changes. This is accomplished by calculating a SHA-1 cryptographic hash for each file in the database cluster directory. If the SHA-1 hash does not match the hash stored in the backup then that file will be restored.
+ 
+ 
+--------------------How to start and stop stanza-----------------------------
+pgbackrest stop --stanza=postgres
+pgbackrest --stanza=postgres --log-level-console=info stanza-delete --force
+ 
+ 
+---------------------PITR-----------------------------
+pgbackrest --stanza=stanza_name --type=time --target="till time you want to restore" --pg1-path=restore_directory --log-level-console=info
+Additonal use --reset-pg1-host if error occurs: run restore command from primary server
+ 
+Example of pitr:
+pgbackrest --stanza=postgres --set=20240517-144731F_20240517-161449D --type=time --target="2024-05-17 16:16:35.117932+05:30" --pg1-path=/mnt/pgbackuprest/ restore
