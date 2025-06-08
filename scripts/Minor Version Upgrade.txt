@@ -1,0 +1,84 @@
+***********************POA for upgrading PostgreSQL 16.4 to 16.5***********************
+
+1. Preparation Before Upgrade
+
+	A. Take one full backup before activity
+	
+		Use `pg_basebackup` for a physical backup.
+ 
+		# Physical backup using pg_basebackup
+			
+			pg_basebackup -U postgres -p 6434 -Ft -z --checkpoint=fast  -Xs -D /pgdata/backup/basebackup_11_19_new -P  &>> /pgdata/backup/basebackup_11_19_new.log
+			
+	B. Review Release Notes
+	
+		Go through the PostgreSQL 16.5 release notes to check for any important changes, fixes, or known issues in the patch that might affect your setup.
+	
+	C. Check Extensions and Compatibility
+		
+		Check installed extensions:
+  
+			SELECT * FROM pg_extension;
+		
+		Ensure Compatibility of the extensions
+	
+	D. Ensure Sufficient Disk Space
+	
+		Verify that you have enough disk space for the upgrade.
+		
+			df -kh
+	
+2. Upgrading PostgreSQL (16.4 to 16.5)
+
+	A. Download and Install PostgreSQL 16.5
+		
+		sudo yum install postgresql16-server-16.5*
+			
+	B. Stop the PostgreSQL Instance
+	
+		sudo systemctl stop postgresql-16.service
+		
+	C. Change data directory in .service file 
+
+       /usr/lib/systemd/system/postgresql-16.service
+
+    D. Start PostgreSQL Instance
+	   
+	   sudo systemctl start postgresql-16.service
+	   
+3. Post-Upgrade Steps
+
+	A. Verify the PostgreSQL Version
+	
+		SELECT version();
+		
+		psql -c "SELECT version();"
+         	
+	B. Upgrade Extensions
+	
+		ALTER EXTENSION extension_name UPDATE;
+		
+	C. Rebuild Indexes and Vacuum the Database
+	
+		REINDEX DATABASE your_database_name;
+		VACUUM FULL;
+	
+	D. Check Database Logs
+	
+		tail -f /pgdata/data/log/postgresql-20241119.csv
+		
+	E. Monitor the System
+	
+		Monitor system performance, resource usage (CPU, memory, I/O), and overall database performance
+		
+	4. Testing and Validation
+		
+		A. Test Application Connectivity
+
+			Test your application to ensure that it is able to connect to the upgraded PostgreSQL instance without issues.
+			
+		B. Run Performance Tests
+		
+			Verify that the upgrade hasn't caused any regressions in performance. You can run your typical queries or benchmarks to compare performance before and after the upgrade.
+			
+		
