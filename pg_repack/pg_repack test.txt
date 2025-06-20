@@ -1,0 +1,135 @@
+psql (16.4, server 15.12)
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+postgres=> create database repacktest;
+CREATE DATABASE
+postgres=> \c repacktest
+psql (16.4, server 15.12)
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+You are now connected to database "repacktest" as user "psqladmin".
+repacktest=> \dx
+                 List of installed extensions
+  Name   | Version |   Schema   |         Description
+---------+---------+------------+------------------------------
+ plpgsql | 1.0     | pg_catalog | PL/pgSQL procedural language
+(1 row)
+
+repacktest=> create extension pgstattuple ;
+CREATE EXTENSION
+repacktest=> create extension pg_repack;
+CREATE EXTENSION
+repacktest=> \dx
+                                   List of installed extensions
+    Name     | Version |   Schema   |                         Description
+-------------+---------+------------+--------------------------------------------------------------
+ pg_repack   | 1.5.1   | public     | Reorganize tables in PostgreSQL databases with minimal locks
+ pgstattuple | 1.5     | public     | show tuple-level statistics
+ plpgsql     | 1.0     | pg_catalog | PL/pgSQL procedural language
+(3 rows)
+
+repacktest=>
+repacktest=> CREATE TABLE test_table (
+repacktest(>     id bigserial PRIMARY KEY,
+repacktest(>     column1 text,
+repacktest(>     column2 text,
+repacktest(>     column3 text,
+repacktest(>     column4 text,
+repacktest(>     column5 text,
+repacktest(>     column6 text,
+repacktest(>     column7 text,
+repacktest(>     column8 text,
+repacktest(>     column9 text,
+repacktest(>     column10 text);
+CREATE TABLE
+repacktest=> INSERT INTO test_table (column1, column2, column3, column4, column5, column6, column7, column8, column9, column10)
+repacktest-> SELECT
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text),
+repacktest->     md5(random()::text)
+repacktest-> FROM generate_series(1, 22000000);
+INSERT 0 22000000
+repacktest=>
+repacktest=>
+repacktest=> \dt+
+                                       List of relations
+ Schema |    Name    | Type  |   Owner   | Persistence | Access method |  Size   | Description
+--------+------------+-------+-----------+-------------+---------------+---------+-------------
+ public | test_table | table | psqladmin | permanent   | heap          | 8187 MB |
+(1 row)
+
+repacktest=> CREATE INDEX idx_column1 ON test_table (column1);
+CREATE INDEX
+repacktest=>
+repacktest=>
+repacktest=> \d+ test_table
+                                                        Table "public.test_table"
+  Column  |  Type  | Collation | Nullable |                Default                 | Storage  | Compression | Stats target | Description
+----------+--------+-----------+----------+----------------------------------------+----------+-------------+--------------+-------------
+ id       | bigint |           | not null | nextval('test_table_id_seq'::regclass) | plain    |             |              |
+ column1  | text   |           |          |                                        | extended |             |              |
+ column2  | text   |           |          |                                        | extended |             |              |
+ column3  | text   |           |          |                                        | extended |             |              |
+ column4  | text   |           |          |                                        | extended |             |              |
+ column5  | text   |           |          |                                        | extended |             |              |
+ column6  | text   |           |          |                                        | extended |             |              |
+ column7  | text   |           |          |                                        | extended |             |              |
+ column8  | text   |           |          |                                        | extended |             |              |
+ column9  | text   |           |          |                                        | extended |             |              |
+ column10 | text   |           |          |                                        | extended |             |              |
+Indexes:
+    "test_table_pkey" PRIMARY KEY, btree (id)
+    "idx_column1" btree (column1)
+Access method: heap
+
+repacktest=> select * from pgstattuple('test_table');
+ table_len  | tuple_count | tuple_len  | tuple_percent | dead_tuple_count | dead_tuple_len | dead_tuple_percent | free_space | free_percent
+------------+-------------+------------+---------------+------------------+----------------+--------------------+------------+--------------
+ 8582103040 |    22000000 | 7964000000 |          92.8 |                0 |              0 |                  0 |  368769680 |          4.3
+(1 row)
+
+repacktest=> UPDATE test_table
+repacktest-> SET column1 = md5(random()::text), column2 = md5(random()::text), column3 = md5(random()::text), column4 = md5(random()::text), column5 = md5(random()::text), column6 = md5(random()::text)
+repacktest-> WHERE id % 5 = 0;
+UPDATE 4400000
+repacktest=>
+repacktest=>
+repacktest=> \dt+
+                                       List of relations
+ Schema |    Name    | Type  |   Owner   | Persistence | Access method |  Size   | Description
+--------+------------+-------+-----------+-------------+---------------+---------+-------------
+ public | test_table | table | psqladmin | permanent   | heap          | 9824 MB |
+(1 row)
+
+repacktest=> select * from pgstattuple('test_table');
+
+
+
+  table_len  | tuple_count | tuple_len  | tuple_percent | dead_tuple_count | dead_tuple_len | dead_tuple_percent | free_space | free_percent
+-------------+-------------+------------+---------------+------------------+----------------+--------------------+------------+--------------
+ 10298515456 |    22000000 | 7964000000 |         77.33 |          4400000 |     1592800000 |              15.47 |  442515452 |          4.3
+(1 row)
+
+repacktest=>
+repacktest=>
+repacktest=>
+repacktest=> SELECT * FROM pgstatindex('idx_column1');
+ version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation
+---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
+       4 |          3 | 2586263552 |         12439 |           2884 |     312821 |           0 |             0 |            54.52 |              49.77
+(1 row)
+
+repacktest=> \q
+
+[postgres@PAYTECHDBBAKSRV ~]$
+[postgres@PAYTECHDBBAKSRV ~]$ /home/postgres/pg_repack-1.4.7/bin/pg_repack -h bpay-pgflexi-pr-mon.postgres.database.azure.com -p 5432 -U psqladmin -d repacktest --table test_table
+Password:
+ERROR: pg_repack failed with error: You must be a superuser to use pg_repack
+[postgres@PAYTECHDBBAKSRV ~]$ 

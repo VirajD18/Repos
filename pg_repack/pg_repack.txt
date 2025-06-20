@@ -1,0 +1,140 @@
+[root@MSTRPOD-PRD-DB1 ~]# 
+[root@MSTRPOD-PRD-DB1 ~]# yum install pg_repack_16
+Last metadata expiration check: 4:43:36 ago on Wed 18 Jun 2025 10:27:56 AM IST.
+Dependencies resolved.
+=============================================================================================================================================================================================
+ Package                                        Architecture                             Version                                              Repository                                Size
+=============================================================================================================================================================================================
+Installing:
+ pg_repack_16                                   x86_64                                   1.5.2-1PGDG.rhel8                                    pgdg16                                    75 k
+
+Transaction Summary
+=============================================================================================================================================================================================
+Install  1 Package
+
+Total download size: 75 k
+Installed size: 176 k
+Is this ok [y/N]: y
+Downloading Packages:
+pg_repack_16-1.5.2-1PGDG.rhel8.x86_64.rpm                                                                                                                    217 kB/s |  75 kB     00:00
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Total                                                                                                                                                        216 kB/s |  75 kB     00:00
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                                                                                                                                     1/1
+  Installing       : pg_repack_16-1.5.2-1PGDG.rhel8.x86_64                                                                                                                               1/1
+  Running scriptlet: pg_repack_16-1.5.2-1PGDG.rhel8.x86_64                                                                                                                               1/1
+  Verifying        : pg_repack_16-1.5.2-1PGDG.rhel8.x86_64                                                                                                                               1/1
+Installed products updated.
+
+Installed:
+  pg_repack_16-1.5.2-1PGDG.rhel8.x86_64
+
+Complete!
+[root@MSTRPOD-PRD-DB1 ~]#
+[root@MSTRPOD-PRD-DB1 ~]# logout
+[postgres@MSTRPOD-PRD-DB1 ~]$  cd $PGDATA
+[postgres@MSTRPOD-PRD-DB1 data16]$ vi postgresql.conf
+
+#add pg_repack and pgstattuple in shared_preload_libraries
+
+[postgres@MSTRPOD-PRD-DB1 data16]$ pg_ctl restart
+waiting for server to shut down............ done
+server stopped
+waiting for server to start....2025-06-18 15:12:31 IST [219753]: user=,db=,app=,client=LOG:  pgaudit extension initialized
+2025-06-18 15:12:31 IST [219753]: user=,db=,app=,client=LOG:  redirecting log output to logging collector process
+2025-06-18 15:12:31 IST [219753]: user=,db=,app=,client=HINT:  Future log output will appear in directory "log".
+ done
+server started
+[postgres@MSTRPOD-PRD-DB1 data16]$
+[postgres@MSTRPOD-PRD-DB1 ~]$ psql -p 8008
+psql (16.8)
+Type "help" for help.
+
+postgres=# \c rj26
+You are now connected to database "rj26" as user "postgres".
+rj26=#
+rj26=# CREATE TABLE testing1 AS
+rj26-# SELECT x, md5(random()::text) AS y
+rj26-# FROM generate_series(1, 1000000) AS x;
+SELECT 1000000
+rj26=# \dt
+          List of relations
+ Schema |   Name   | Type  |  Owner
+--------+----------+-------+----------
+ public | testing1 | table | postgres
+(1 row)
+
+rj26=# \dt+
+                                    List of relations
+ Schema |   Name   | Type  |  Owner   | Persistence | Access method | Size  | Description
+--------+----------+-------+----------+-------------+---------------+-------+-------------
+ public | testing1 | table | postgres | permanent   | heap          | 66 MB |
+(1 row)
+
+rj26=# select count(*) from testing1;
+  count
+---------
+ 1000000
+(1 row)
+
+rj26=# CREATE INDEX ON testing1 (x);
+CREATE INDEX
+rj26=#
+rj26=# ALTER TABLE testing1 ADD CONSTRAINT testing1_pkey PRIMARY KEY (x);
+ALTER TABLE
+rj26=# \d+ testing1
+                                         Table "public.testing1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Compression | Stats target | Description
+--------+---------+-----------+----------+---------+----------+-------------+--------------+-------------
+ x      | integer |           | not null |         | plain    |             |              |
+ y      | text    |           |          |         | extended |             |              |
+Indexes:
+    "testing1_pkey" PRIMARY KEY, btree (x)
+Access method: heap
+rj26=#
+rj26=# SELECT pg_size_pretty(pg_relation_size('testing1')) AS table_size,
+rj26-#        pg_size_pretty(pg_relation_size('testing1_pkey')) AS index_size,
+rj26-#        (pgstattuple('testing1')).dead_tuple_percent;
+ table_size | index_size | dead_tuple_percent
+------------+------------+--------------------
+ 66 MB      | 21 MB      |                  0
+(1 row)
+
+rj26=# DELETE FROM testing1 WHERE x % 3 = 0;
+DELETE 333333
+rj26=# UPDATE testing1 SET x = x + 1000000 WHERE x % 2 = 0;
+UPDATE 333334
+rj26=# 
+rj26=# SELECT pg_size_pretty(pg_relation_size('testing1')) AS table_size,
+rj26-#        pg_size_pretty(pg_relation_size('testing1_pkey')) AS index_size,
+rj26-#        (pgstattuple('testing1')).dead_tuple_percent;
+ table_size | index_size | dead_tuple_percent
+------------+------------+--------------------
+ 67 MB      | 29 MB      |              29.06
+(1 row)
+
+rj26=# \q
+[postgres@MSTRPOD-PRD-DB1 data16]$
+[postgres@MSTRPOD-PRD-DB1 data16]$ 
+[postgres@MSTRPOD-PRD-DB1 data16]$ pg_repack -d rj26 --table testing1 -p 8008
+INFO: repacking table "public.testing1"
+[postgres@MSTRPOD-PRD-DB1 ~]$ psql -p 8008
+psql (16.8)
+Type "help" for help.
+
+postgres=# \c rj26
+You are now connected to database "rj26" as user "postgres".
+rj26=# SELECT pg_size_pretty(pg_relation_size('testing1')) AS table_size,
+rj26-#        pg_size_pretty(pg_relation_size('testing1_pkey')) AS index_size,
+rj26-#        (pgstattuple('testing1')).dead_tuple_percent;
+ table_size | index_size | dead_tuple_percent
+------------+------------+--------------------
+ 43 MB      | 14 MB      |                  0
+(1 row)
+
+rj26=# \q
+	
