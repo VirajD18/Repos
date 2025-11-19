@@ -11,3 +11,4 @@ ORDER BY
     pg_relation_size(relid) DESC
 LIMIT 20;
 
+SELECT pg_size_pretty(pg_total_relation_size(''));
