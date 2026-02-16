@@ -1,0 +1,78 @@
+docker volume create n8n_data
+
+docker run -it \
+--name n8n \
+-p 5678:5678 \
+-e GENERIC_TIMEZONE="IST" \
+-e TZ="IST" \
+-e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+-e N8N_RUNNERS_ENABLED=true \
+-e DB_TYPE=postgresdb \
+-e DB_POSTGRESDB_DATABASE=kyc \
+-e DB_POSTGRESDB_HOST=192.168.43.34 \
+-e DB_POSTGRESDB_PORT=5432 \
+-e DB_POSTGRESDB_USER=postgres \
+-e DB_POSTGRESDB_SCHEMA=public \
+-e DB_POSTGRESDB_PASSWORD=Bajaj@123 \
+-e DB_POSTGRESDB_SSL=true \
+-v n8n_data:/home/node/.n8n \
+docker.n8n.io/n8nio/n8n
+
+
+
+
+
+
+docker run -d \
+--name n8n \
+--network host \
+-e TZ="Asia/Kolkata" \
+-e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+-e N8N_BASIC_AUTH_ACTIVE=true \
+-e N8N_BASIC_AUTH_USER=postgres \
+-e N8N_BASIC_AUTH_PASSWORD=Bajaj@123 \
+-e N8N_SECURE_COOKIE=false \
+-e DB_TYPE=postgresdb \
+-e DB_POSTGRESDB_DATABASE=kyc \
+-e DB_POSTGRESDB_HOST=127.0.0.1 \
+-e DB_POSTGRESDB_PORT=5432 \
+-e DB_POSTGRESDB_USER=postgres \
+-e DB_POSTGRESDB_SCHEMA=public \
+-e DB_POSTGRESDB_PASSWORD='Bajaj@123' \
+-e DB_POSTGRESDB_SSL=false \
+-v n8n_data:/home/node/.n8n \
+-v /opt/n8n-scripts:/pgscripts:Z \
+--restart unless-stopped \
+docker.n8n.io/n8nio/n8n
+
+
+
+
+
+docker stop n8n
+docker rm n8n
+
+
+
+docker run -d \
+--name n8n \
+--network host \
+-e TZ="Asia/Kolkata" \
+-e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+-e N8N_BASIC_AUTH_ACTIVE=true \
+-e N8N_BASIC_AUTH_USER=postgres \
+-e N8N_BASIC_AUTH_PASSWORD=Bajaj@123 \
+-e N8N_SECURE_COOKIE=false \
+-e N8N_ENABLE_COMMANDS=true \
+-e DB_TYPE=postgresdb \
+-e DB_POSTGRESDB_DATABASE=n8ndb \
+-e DB_POSTGRESDB_HOST=127.0.0.1 \
+-e DB_POSTGRESDB_PORT=5432 \
+-e DB_POSTGRESDB_USER=postgres \
+-e DB_POSTGRESDB_SCHEMA=n8n \
+-e DB_POSTGRESDB_PASSWORD='Bajaj@123' \
+-e DB_POSTGRESDB_SSL=false \
+-v n8n_data:/home/node/.n8n \
+-v /opt/n8n-scripts:/pgscripts:Z \
+--restart unless-stopped \
+docker.n8n.io/n8nio/n8n
